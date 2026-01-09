@@ -183,3 +183,177 @@ func TestSchemaValidator_EdgeCases(t *testing.T) {
 	r = s.Validate(j)
 	assert.False(t, r.IsValid())
 }
+
+func TestNumericFormatEnforcement(t *testing.T) {
+	tests := []struct {
+		name          string
+		schema        *spec.Schema
+		value         interface{}
+		expectSuccess bool
+	}{
+		// Integer int32 tests
+		{
+			name: "int32 valid value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"integer"},
+					Format: "int32",
+				},
+			},
+			value:         int64(123),
+			expectSuccess: true,
+		},
+		{
+			name: "int32 overflow value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"integer"},
+					Format: "int32",
+				},
+			},
+			value:         int64(2147483648), // MaxInt32 + 1
+			expectSuccess: false,
+		},
+		{
+			name: "int32 boundary max value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"integer"},
+					Format: "int32",
+				},
+			},
+			value:         int64(2147483647), // MaxInt32
+			expectSuccess: true,
+		},
+		{
+			name: "int32 boundary min value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"integer"},
+					Format: "int32",
+				},
+			},
+			value:         int64(-2147483648), // MinInt32
+			expectSuccess: true,
+		},
+		{
+			name: "int32 underflow value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"integer"},
+					Format: "int32",
+				},
+			},
+			value:         int64(-2147483649), // MinInt32 - 1
+			expectSuccess: false,
+		},
+
+		// Integer int64 tests
+		{
+			name: "int64 valid value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"integer"},
+					Format: "int64",
+				},
+			},
+			value:         int64(9223372036854775807), // MaxInt64
+			expectSuccess: true,
+		},
+
+		// Number float (float32) tests
+		{
+			name: "float32 valid value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"number"},
+					Format: "float",
+				},
+			},
+			value:         float64(1.23),
+			expectSuccess: true,
+		},
+		{
+			name: "float32 overflow value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"number"},
+					Format: "float",
+				},
+			},
+			value:         float64(math.MaxFloat32) * 1.1,
+			expectSuccess: false,
+		},
+
+		// Number double (float64) tests
+		{
+			name: "double valid value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"number"},
+					Format: "double",
+				},
+			},
+			value:         float64(1.23),
+			expectSuccess: true,
+		},
+		{
+			name: "double max value",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"number"},
+					Format: "double",
+				},
+			},
+			value:         math.MaxFloat64,
+			expectSuccess: true,
+		},
+
+		// Mismatched format tests (format should be ignored)
+		{
+			name: "number type with int32 format (format ignored)",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"number"},
+					Format: "int32",
+				},
+			},
+			value:         float64(math.MaxInt32) + 1.0, // Should be valid as a number, ignoring int32 limit
+			expectSuccess: true,
+		},
+		{
+			name: "integer type with float format (format ignored)",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"integer"},
+					Format: "float",
+				},
+			},
+			value:         int64(math.MaxInt32) * 2, // Should be valid as integer (int64), ignoring float limit/check
+			expectSuccess: true,
+		},
+		{
+			name: "multiple types with int32 format (format ignored)",
+			schema: &spec.Schema{
+				SchemaProps: spec.SchemaProps{
+					Type:   []string{"integer", "string"},
+					Format: "int32",
+				},
+			},
+			value:         int64(math.MaxInt32) + 1, // Should be valid as integer (int64), ignoring int32 limit due to ambiguity
+			expectSuccess: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			validator := NewSchemaValidator(tc.schema, nil, "", strfmt.Default)
+			res := validator.Validate(tc.value)
+			if tc.expectSuccess {
+				assert.Empty(t, res.Errors, "Expected success for %s", tc.name)
+			} else {
+				assert.NotEmpty(t, res.Errors, "Expected error for %s", tc.name)
+			}
+		})
+	}
+}
